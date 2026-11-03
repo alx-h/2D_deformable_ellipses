@@ -786,44 +786,7 @@ def load_hdf5_output(path):
             "frame": h5["time/frame"][...],
         }
     return data
-'''
-    traj_x = data_ellipses["x"]
-    traj_y = data_ellipses["y"]
-    traj_theta = data_ellipses["orient"]
-    traj_lmda_major = data_ellipses["l_major"]
-    traj_lmda_minor = data_ellipses["l_minor"]
-    n_frames = traj_x.shape[1]
 
-    deform_ratio = traj_lmda_major / traj_lmda_minor
-    norm = plt.Normalize(cfg.aspect_ratio-0.5, cfg.aspect_ratio+0.5)
-    cmap = LinearSegmentedColormap.from_list("CustomCmap", ["green", "yellow", "red"])
-
-    fig = plt.figure(figsize=(7, 7))
-    ax = fig.add_axes([0, 0, 1, 1], frameon=False)
-    ax.set_xlim(-cfg.L / 2.0, cfg.L / 2.0)
-    ax.set_ylim(-cfg.L / 2.0, cfg.L / 2.0)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_aspect('equal')
-
-    def plot(frame):
-        ax.clear()
-        ax.set_xlim(-cfg.L / 2.0, cfg.L / 2.0)
-        ax.set_ylim(-cfg.L / 2.0, cfg.L / 2.0)
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ec = EllipseCollection( traj_lmda_major[:, frame] * 2.0, traj_lmda_minor[:, frame] * 2.0, traj_theta[:, frame] / math.pi * 180.0,
-            units="xy", offsets=np.array([traj_x[:, frame], traj_y[:, frame]]).T, offset_transform=ax.transData, array=deform_ratio[:, frame], cmap=cmap, norm=norm, )
-        ax.add_collection(ec)
-        ax.quiver(traj_x[:, frame], traj_y[:, frame], np.cos(traj_theta[:, frame]), np.sin(traj_theta[:, frame]), color="black",)
-        ax.text(0.02, 0.97, f"frame {frame}", transform=ax.transAxes, va="top")
-        return (ax,)
-
-    animation = FuncAnimation(fig, plot, frames=n_frames, interval=cfg.frame_interval, blit=False, repeat=False)
-    writer = FFMpegWriter(fps=cfg.movie_fps, codec="libx264", extra_args=["-crf", "23", "-preset", "fast", "-pix_fmt", "yuv420p"],)
-    animation.save(out_mp4, writer=writer, dpi=cfg.movie_dpi)
-    plt.close(fig)
-'''
 
 #def make_movie(data_ellipses, cfg: SimConfig, out_mp4: Path, plot_pot:bool=False):
 #=======
