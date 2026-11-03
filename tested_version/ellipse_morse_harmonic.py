@@ -55,16 +55,14 @@ class SimConfig:
         self.zeta_r: float = 4*self.R_0**2/3 
         self.zeta_stress: float = 1.0
 
-        @property
-        def set_diffusion(self):
-            if KT > 0:
-                self.D: float = KT/self.zeta_t
-                self.D_r: float = KT/self.zeta_r
-                self.D_str = KT/self.zeta_stress
-            else:
-                self.D: float = 0.0
-                self.D_r: float = 0.01
-                self.D_str:float = 0.0
+        if KT > 0:
+            self.D: float = KT/self.zeta_t
+            self.D_r: float = KT/self.zeta_r
+            self.D_str = KT/self.zeta_stress
+        else:
+            self.D: float = 0.0
+            self.D_r: float = 0.01
+            self.D_str:float = 0.0
 
         self.deformable: bool = deformable
         self.deformable_relax: bool = False
@@ -645,6 +643,8 @@ def run_simulation(cfg: SimConfig = CONFIG):
         noise_x = rng.normal(0.0, 1.0, N)
         noise_y = rng.normal(0.0, 1.0, N)
         noise_theta = rng.normal(0.0, 1.0, N)
+        noise_sxx = rng.normal(0.0, 1.0, N)
+        noise_syy = rng.normal(0.0, 1.0, N)
         integrate_state_cpu(x, y, theta, Lmda, lmda_major, lmda_minor, Fx, Fy, torque, sxx, sxy, syx, syy, noise_x, noise_y, noise_theta, noise_sxx, noise_syy, lmda_major_0, lmda_minor_0, 
         cfg.deformable, cfg.dt, cfg.L, cfg.v0, cfg.D, cfg.D_r, cfg.D_str, cfg.zeta_t, cfg.zeta_r, cfg.R_0, cfg.tau, cfg.mu,  cfg.K, cfg.incom_K, cfg.shape_diff_tol, )
 
@@ -657,7 +657,7 @@ def run_simulation(cfg: SimConfig = CONFIG):
 
     data_ellipses = {
         "meta": {
-            **asdict(cfg),
+            **vars(cfg),
             "N": N,
             "n_cells": n_cells,
             "cell_size": cell_size,
@@ -735,18 +735,18 @@ def save_hdf5_output(out_path, data_ellipse, cfg:SimConfig):
         g_energies = h5.create_group("energies")
         g_time = h5.create_group("time")
         
-        g_particles.create_dataset("x", data_ellipse["x"])
-        g_particles.create_dataset("y", data_ellipse["y"])
-        g_particles.create_dataset("orient", data_ellipse["orient"])
-        g_particles.create_dataset("l_minor", data_ellipse["l_minor"])
-        g_particles.create_dataset("l_major", data_ellipse["l_major"])
+        g_particles.create_dataset("x", data= data_ellipse["x"])
+        g_particles.create_dataset("y", data= data_ellipse["y"])
+        g_particles.create_dataset("orient", data= data_ellipse["orient"])
+        g_particles.create_dataset("l_minor", data= data_ellipse["l_minor"])
+        g_particles.create_dataset("l_major", data= data_ellipse["l_major"])
 
-        g_forces.create_dataset("Fx", data_ellipse["Fx"])
-        g_forces.create_dataset("Fy", data_ellipse["Fy"])
+        g_forces.create_dataset("Fx", data= data_ellipse["Fx"])
+        g_forces.create_dataset("Fy", data= data_ellipse["Fy"])
 
-        g_stresses.create_dataset("tensor", data_ellipse["stresses"])
-        g_energies.create_dataset("u_potential", data_ellipse["u_potential"])
-        g_energies.create_dataset("u_potential_total", data_ellipse["u_potential"].sum(axis=0))
+        g_stresses.create_dataset("tensor", data= data_ellipse["stresses"])
+        g_energies.create_dataset("u_potential", data= data_ellipse["u_potential"])
+        g_energies.create_dataset("u_potential_total", data= data_ellipse["u_potential"].sum(axis=0))
 
         g_time.create_dataset("frame", data=saved_frames)
         g_time.create_dataset("t", data=saved_times)
@@ -762,7 +762,7 @@ def save_hdf5_output(out_path, data_ellipse, cfg:SimConfig):
         h5["u_potential"] = g_energies["u_potential"]
         h5["u_potential_total"] = g_energies["u_potential_total"]
 
-
+'''
 def load_hdf5_output(path):
     """Load the HDF5 output back into the same dictionary style as the .npy output."""
     if h5py is None:
@@ -785,6 +785,43 @@ def load_hdf5_output(path):
             "time": h5["time/t"][...],
             "frame": h5["time/frame"][...],
         }
+    return data
+'''
+
+def load_hdf5_output(path):
+    """Load HDF5 output into the same dictionary style as the .npy output."""
+    if h5py is None:
+        raise ImportError("Loading HDF5 output requires h5py")
+
+    with h5py.File(path, "r") as h5:
+
+        dataset_type = h5py.Dataset
+
+        def read_dataset(name):
+            obj = h5[name]
+            if not isinstance(obj, dataset_type):
+                raise TypeError(
+                    f"Expected Dataset at {name!r}, "
+                    f"got {type(obj).__name__}"
+                )
+            return obj[...]
+
+        data = {
+            "meta": dict(h5["meta"].attrs),
+            "x": read_dataset("particles/x"),
+            "y": read_dataset("particles/y"),
+            "orient": read_dataset("particles/orient"),
+            "l_major": read_dataset("particles/l_major"),
+            "l_minor": read_dataset("particles/l_minor"),
+            "Fx": read_dataset("forces/Fx"),
+            "Fy": read_dataset("forces/Fy"),
+            "stresses": read_dataset("stresses/tensor"),
+            "u_potential": read_dataset("energies/u_potential"),
+            "u_potential_total": read_dataset("energies/u_potential_total"),
+            "time": read_dataset("time/t"),
+            "frame": read_dataset("time/frame"),
+        }
+
     return data
 
 
@@ -823,7 +860,7 @@ def make_movie(data_ellipses, cfg: SimConfig, out_mp4: Path, out_snap: Path,  pl
     )
 
     fig = plt.figure(figsize=(7, 7))
-    ax = fig.add_axes([0, 0, 1, 1], frameon=False)
+    ax = fig.add_axes((0, 0, 1, 1), frameon=False)
     ax.set_xlim(-cfg.L / 2.0, cfg.L / 2.0)
     ax.set_ylim(-cfg.L / 2.0, cfg.L / 2.0)
     ax.set_xticks([])
@@ -832,7 +869,7 @@ def make_movie(data_ellipses, cfg: SimConfig, out_mp4: Path, out_snap: Path,  pl
 
     if(plot_pot==True):
         # Inset in the upper-right corner. Coordinates are fractions of the figure.
-        ax_energy = fig.add_axes([0.60, 0.68, 0.35, 0.25])
+        ax_energy = fig.add_axes((0.60, 0.68, 0.35, 0.25))
         energy_line, = ax_energy.plot([], [], linewidth=1.5)
         current_energy, = ax_energy.plot([], [], marker="o", markersize=3)
         ax_energy.set_title("Potential energy", fontsize=9)
