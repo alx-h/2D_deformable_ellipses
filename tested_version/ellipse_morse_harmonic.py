@@ -79,9 +79,14 @@ class SimConfig:
         self.seed = seed	
         print('Setting simulation to run ')
 
-    def set_actpar(self,v0: float = 0.3, D_r: float = 0.01):
+    def set_actpar(self,v0: float = 0.3, D_r: float = 0.01, 
+                   shear_active:float = 0.0, bulk_active:float = 0.0, stress_active:float = 0.0):
         self.v0 = v0
         self.D_r = D_r
+
+        self.shear_active = shear_active
+        self.bulk_active = bulk_active
+        self.stress_active = stress_active
 
     # Deformable-particle parameters
     def set_defpar(self, tau: float = 10.0, mu: float = 0.5, K: float = 3.0, incom_K:bool = False):
@@ -127,6 +132,10 @@ class SimConfig:
         "v0": self.v0,
         "tot_time": self.tot_time,
         "dt":self.dt,
+
+        "shear_active":self.shear_active,
+        "bulk_active":self.bulk_active,
+        "stress_active":self.stress_active,
         }
 
         return dict_data
@@ -414,7 +423,8 @@ def compute_forces_harmonic_cell_cpu(x, y, cos_theta, sin_theta, lmda_major, lmd
 # State update 
 @njit(parallel=True)
 def integrate_state_cpu(x, y, theta, Lmda, lmda_major, lmda_minor, Fx, Fy, torque_mech, sxx, sxy, syx, syy, noise_x, noise_y, noise_theta, noise_sxx, noise_syy, lmda_major_0: float, lmda_minor_0: float, deformable: bool,
-    dt_step: float, L: float, v0: float, D: float, D_r: float, D_str:float, zeta_t:float, zeta_r:float, R_0: float, tau: float, mu: float, K:float, incom_K: bool, shape_diff_tol:float, ):
+    dt_step: float, L: float, v0: float, D: float, D_r: float, D_str:float, zeta_t:float, zeta_r:float, R_0: float, tau: float, mu: float, K:float, incom_K: bool, shape_diff_tol:float, 
+    shear_active:float, bulk_active:float, stress_active:float):
     
     n = x.shape[0]
     tol = shape_diff_tol #1.0e-5
@@ -431,6 +441,13 @@ def integrate_state_cpu(x, y, theta, Lmda, lmda_major, lmda_minor, Fx, Fy, torqu
         lmin = lmda_minor[i]
 
         if deformable:
+            # Active stress first order for now
+            mu += -shear_active
+            K += -bulk_active
+            sxx[i] += stress_active
+            syy[i] += stress_active
+            ##
+
             L00 = Lmda[0, 0, i]
             L01 = Lmda[0, 1, i]
             L10 = Lmda[1, 0, i]
@@ -773,7 +790,8 @@ def run_simulation(cfg: SimConfig):
         noise_syy = rng.normal(0.0, 1.0, N)
         noise_theta = rng.normal(0.0, 1.0, N)
         integrate_state_cpu(x, y, theta, Lmda, lmda_major, lmda_minor, Fx, Fy, torque, sxx, sxy, syx, syy, noise_x, noise_y, noise_theta, noise_sxx, noise_syy, lmda_major_0, lmda_minor_0, cfg.deformable_relax,
-            cfg.dt_relax, cfg.L, cfg.v0, cfg.D, cfg.D_r, cfg.D_str, cfg.zeta_t, cfg.zeta_r, cfg.R_0, cfg.tau, cfg.mu, cfg.K, cfg.incom_K, cfg.shape_diff_tol,)
+            cfg.dt_relax, cfg.L, cfg.v0, cfg.D, cfg.D_r, cfg.D_str, cfg.zeta_t, cfg.zeta_r, cfg.R_0, cfg.tau, cfg.mu, cfg.K, cfg.incom_K, cfg.shape_diff_tol,
+            0.0, 0.0, 0.0) # Active stresses zero during relaxation)
 
     save_idx = 0
     for t in _progress(range(steps), "run"):
@@ -787,7 +805,8 @@ def run_simulation(cfg: SimConfig):
         noise_syy = rng.normal(0.0, 1.0, N)
 
         integrate_state_cpu(x, y, theta, Lmda, lmda_major, lmda_minor, Fx, Fy, torque, sxx, sxy, syx, syy, noise_x, noise_y, noise_theta, noise_sxx, noise_syy, lmda_major_0, lmda_minor_0, 
-        cfg.deformable, cfg.dt, cfg.L, cfg.v0, cfg.D, cfg.D_r, cfg.D_str, cfg.zeta_t, cfg.zeta_r, cfg.R_0, cfg.tau, cfg.mu,  cfg.K, cfg.incom_K, cfg.shape_diff_tol, )
+        cfg.deformable, cfg.dt, cfg.L, cfg.v0, cfg.D, cfg.D_r, cfg.D_str, cfg.zeta_t, cfg.zeta_r, cfg.R_0, cfg.tau, cfg.mu,  cfg.K, cfg.incom_K, cfg.shape_diff_tol, 
+        cfg.shear_active, cfg.bulk_active, cfg.stress_active)
         
         if t % cfg.interval == 0 and save_idx < n_save:
                     save_snapshot(save_idx, x, y, theta, lmda_major, lmda_minor, Fx, Fy, sxx, sxy, syx, syy, traj, traj_u_potential, U_potential)
@@ -960,7 +979,7 @@ def parse_bool(value):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-potential", type=str, default="harmonic", choices=["harmonic", "morse"], help="Choose from harmonic (just repulsive) or morse (attractive) potential")
+    parser.add_argument("-potential", type=str, default="morse", choices=["harmonic", "morse"], help="Choose from harmonic (just repulsive) or morse (attractive) potential")
     parser.add_argument("-phi", type=float, default=0.9, help="Packing fraction for the system")
     parser.add_argument("-L", type=int, default=30, help="Sets the size of the simulation box")
     parser.add_argument("-v0", type=float, default=0.1, help="Strength of the activity (self-propulsion) of ellipses")
@@ -978,6 +997,9 @@ if __name__ == "__main__":
     parser.add_argument("-plot_pot", type=parse_bool, default=False, help="Boolean to plot potential energy in output movie/snapshot")
     parser.add_argument("-movie_fps", type=int, default=25, help="Output movie's frames per sec")
     parser.add_argument("-movie_dpi", type=int, default=100, help="density per pixel(dpi) for output movie frames")
+    parser.add_argument("-shear_active", type=float, default=0.0, help="Active correction to shear modulus")
+    parser.add_argument("-bulk_active", type=float, default=0.0, help="Active correction to bulk modulus")
+    parser.add_argument("-stress_active", type=float, default=0.0, help="Constant active stress in xx, yy")
     args = parser.parse_args()
 
     # Edit this object to change defaults from the command line script.
