@@ -791,7 +791,7 @@ def run_simulation(cfg: SimConfig):
         noise_theta = rng.normal(0.0, 1.0, N)
         integrate_state_cpu(x, y, theta, Lmda, lmda_major, lmda_minor, Fx, Fy, torque, sxx, sxy, syx, syy, noise_x, noise_y, noise_theta, noise_sxx, noise_syy, lmda_major_0, lmda_minor_0, cfg.deformable_relax,
             cfg.dt_relax, cfg.L, cfg.v0, cfg.D, cfg.D_r, cfg.D_str, cfg.zeta_t, cfg.zeta_r, cfg.R_0, cfg.tau, cfg.mu, cfg.K, cfg.incom_K, cfg.shape_diff_tol,
-            0.0, 0.0, 0.0) # Active stresses zero during relaxation)
+            cfg.shear_active, cfg.bulk_active, cfg.stress_active)
 
     save_idx = 0
     for t in _progress(range(steps), "run"):
@@ -1009,7 +1009,7 @@ if __name__ == "__main__":
     # packing fraction and system size
     CONFIG.set_syspar(phi = args.phi, L= args.L)
     # activity
-    CONFIG.set_actpar(v0 = args.v0, D_r = args.Dr)
+    CONFIG.set_actpar(v0 = args.v0, D_r = args.Dr, shear_active = args.shear_active, bulk_active = args.bulk_active, stress_active = args.stress_active)
     # Deformable-particle parameters
     CONFIG.set_defpar(tau = args.tau, mu = args.mu ,K = args.K, incom_K = args.incom_K)
     # simulation run
