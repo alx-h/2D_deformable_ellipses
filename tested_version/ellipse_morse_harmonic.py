@@ -79,9 +79,14 @@ class SimConfig:
         self.seed = seed	
         print('Setting simulation to run ')
 
-    def set_actpar(self,v0: float = 0.3, D_r: float = 0.01):
+    def set_actpar(self,v0: float = 0.3, D_r: float = 0.01,
+                   shear_active: float = 0.0, bulk_active: float = 0.0, stress_active: float = 0.0):
         self.v0 = v0
         self.D_r = D_r
+
+        self.shear_active = shear_active
+        self.bulk_active = bulk_active
+        self.stress_active = stress_active
 
     # Deformable-particle parameters
     def set_defpar(self, tau: float = 10.0, mu: float = 0.5, K: float = 3.0, incom_K:bool = False):
@@ -127,6 +132,10 @@ class SimConfig:
         "v0": self.v0,
         "tot_time": self.tot_time,
         "dt":self.dt,
+
+        "shear_active":self.shear_active,
+        "bulk_active":self.bulk_active,
+        "stress_active":self.stress_active
         }
 
         return dict_data
@@ -414,13 +423,19 @@ def compute_forces_harmonic_cell_cpu(x, y, cos_theta, sin_theta, lmda_major, lmd
 # State update 
 @njit(parallel=True)
 def integrate_state_cpu(x, y, theta, Lmda, lmda_major, lmda_minor, Fx, Fy, torque_mech, sxx, sxy, syx, syy, noise_x, noise_y, noise_theta, noise_sxx, noise_syy, lmda_major_0: float, lmda_minor_0: float, deformable: bool,
-    dt_step: float, L: float, v0: float, D: float, D_r: float, D_str:float, zeta_t:float, zeta_r:float, R_0: float, tau: float, mu: float, K:float, incom_K: bool, shape_diff_tol:float, ):
+    dt_step: float, L: float, v0: float, D: float, D_r: float, D_str:float, zeta_t:float, zeta_r:float, R_0: float, tau: float, mu: float, K:float, incom_K: bool, shape_diff_tol:float, 
+    shear_active: float = 0, bulk_active: float = 0, stress_active: float = 0):
     
     n = x.shape[0]
     tol = shape_diff_tol #1.0e-5
     sqrt_2Ddt = math.sqrt(2.0 * D * dt_step)
     sqrt_2Drdt = math.sqrt(2.0 * D_r * dt_step)
     sqrt_2Dstrdt = math.sqrt(2.0*D_str* dt_step)
+
+    # Active deformation first order
+    mu -= shear_active
+    K -= bulk_active
+    
     
     for i in prange(n):
         th = theta[i]
@@ -430,7 +445,7 @@ def integrate_state_cpu(x, y, theta, Lmda, lmda_major, lmda_minor, Fx, Fy, torqu
         lmaj = lmda_major[i]
         lmin = lmda_minor[i]
 
-        if deformable:
+        if deformable:          
             L00 = Lmda[0, 0, i]
             L01 = Lmda[0, 1, i]
             L10 = Lmda[1, 0, i]
@@ -960,7 +975,7 @@ def parse_bool(value):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("-potential", type=str, default="harmonic", choices=["harmonic", "morse"], help="Choose from harmonic (just repulsive) or morse (attractive) potential")
+    parser.add_argument("-potential", type=str, default="morse", choices=["harmonic", "morse"], help="Choose from harmonic (just repulsive) or morse (attractive) potential")
     parser.add_argument("-phi", type=float, default=0.9, help="Packing fraction for the system")
     parser.add_argument("-L", type=int, default=30, help="Sets the size of the simulation box")
     parser.add_argument("-v0", type=float, default=0.1, help="Strength of the activity (self-propulsion) of ellipses")
